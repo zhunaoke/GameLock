@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+        name="viewport"/>
+  <title></title>
+  <link rel='stylesheet' href='/stylesheets/style.css' />
+  <link rel='stylesheet' href='/libs/alert/sweetalert.css' />
+  <script src="/libs/jquery/jquery.min.js"></script>
+  <script src="/libs/alert/sweetalert.min.js"></script>
+  <script src="/libs/alert/sweetalert-dev.js"></script>
+  <style>
+    body{padding:0;margin:0;}
+    #svgArea{
+      position: absolute;
+      z-index: 100;
+      background: transparent;
+      top:0;
+      left:0;
+      display: block;
+      /*pointer-events: none;*/
+    }
+    .pathStyle{
+      fill:none;fill-rule:evenodd;stroke:#000;stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas" width="300" height="300" style="background-color: antiquewhite;"></canvas>
+<div id="svgArea" >
+  <svg  xmlns="http://www.w3.org/2000/svg" width="300" height="300" id="svg2" version="1.1" >
+    <g inkscape:label="Layer 1" inkscape:groupmode="layer" id="layer1">
+      <path id="path1" class="pathStyle" ></path>
+    </g>
+  </svg>
+</div>
+<button id="start">开始</button>
+
+
+<script>
+  var canvas=document.getElementById("canvas");
+  var ctx=canvas.getContext("2d");
+  var outArr=[],inArr=[],firstPosition=[],pathIndexArray=[];//定义每个点的位置坐标；
+  var chooseType=3;// 表示需要画几宫格的；
+  var R=canvas.width/(2+4*chooseType);//根据canvas的大小决定半径的大小，每个圆看成距左右两边的边距都是一个R;
+  var touchFlag=false;
+  var level= 4,pathTime=2;//初始化游戏的等级和时间；
+  var pathBox=document.getElementById("path1");
+  /**
+   * 绘制九宫格的每个圆圈，主要确定每个圆心的圆心坐标；
+   */
+  function createCircle(){
+    var n=chooseType;//表示画n*n的矩阵；
+    var r=R;
+    for(var i=0;i<n;i++){//循环：从第0行开始；
+      for(var j=0;j<n;j++){//循环：从第0列开始；
+        outArr.push({
+          x:j*4*r+3*r,
+          y:i*4*r+3*r,
+          index:i*n+j
+        });
+        inArr.push({
+          x:j*4*r+3*r,
+          y:i*4*r+3*r,
+          index:i*n+j
+        });
+      }
+    }
+    //根据圆心的位置，画外层空心圆；
+    for(var i=0;i<outArr.length;i++){
+      drawStrokeCircle(outArr[i].x,outArr[i].y);
+    }
+  }
+  /**
+   * 画空心圆,画板初始化；
+   */
+  function drawStrokeCircle(circlex,circleY){
+    //将多个点的圆心位置存储在数组中，针对数组中的每个点进行画圆，即可绘制出所有的圆；
+    var circleX=circlex,circleY=circleY,startAngle=0,endAngle=Math.PI* 2,r=R;
+    var forward=false;//false:顺时针，true：逆时针；
+    ctx.lineWidth=1;//画笔的粗细；
+    ctx.strokeStyle="green";//画笔的颜色；
+    ctx.beginPath();
+    ctx.arc(circleX,circleY,r,startAngle,endAngle,forward);
+    ctx.closePath();
+    ctx.stroke();//画空心圆
+  }
+  /**
+   * 画实心圆(参数为：圆心的坐标)
+   */
+  function drawSingFillCircle(circleX,circleY){
+    ctx.beginPath();
+    ctx.fillStyle="green";
+    var circleX=circleX,circleY=circleY,r=R/2,startAngle= 0,endAngle=Math.PI*2,forward=false;
+    ctx.arc(circleX,circleY,r,startAngle,endAngle,forward);
+    ctx.closePath();
+    ctx.fill();
+  }
+  /**
+   * 画实心圆(参数为：圆心的坐标)
+   */
+  function drawFillCircle(firstPosition){
+    ctx.beginPath();
+    ctx.fillStyle="green";
+    var circleX,circleY,r=R/2,startAngle= 0,endAngle=Math.PI*2,forward=false;
+    for(var i=0;i<firstPosition.length;i++){
+      circleX=firstPosition[i].x;
+      circleY=firstPosition[i].y;
+      ctx.arc(circleX,circleY,r,startAngle,endAngle,forward);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  /**
+   * 画直线轨迹；
+   */
+  function drawLine(po,firstPosition){
+    ctx.beginPath();
+    ctx.strokeStyle="green";
+    ctx.lineWidth=2;
+    ctx.moveTo(firstPosition[0].x,firstPosition[0].y);
+    for(var i=1;i<firstPosition.length;i++){
+      ctx.lineTo(firstPosition[i].x,firstPosition[i].y);
+    }
+    ctx.lineTo(po.x,po.y);
+    ctx.stroke();
+    ctx.closePath();
+  }
+  /**
+   * 获取鼠标当前的位置；
+   */
+  function getPosition(e){
+    var rect= e.currentTarget.getBoundingClientRect();
+    var po={
+      x: e.touches[0].clientX-rect.left,
+      y: e.touches[0].clientY-rect.top
+    }
+    return po;
+  }
+  /**
+   * 鼠标在canvas中移动时，执行的操作；
+   */
+  function update(po){
+    ctx.clearRect(0,0,canvas.width,canvas.width);
+    //根据圆心的位置，画外层空心圆；
+    for(var i=0;i<outArr.length;i++){
+      drawStrokeCircle(outArr[i].x,outArr[i].y);
+    }
+    //把移动时初始的圆心画出来；
+    drawFillCircle(firstPosition);
+    drawLine(po,firstPosition);
+    //除开第一个圆心，在其余圆的位置处判断鼠标指针与圆心的位置关系；
+    for(var i=0;i<inArr.length;i++){
+      if(Math.abs(po.x-inArr[i].x)<R&&Math.abs(po.y-inArr[i].y)<R){
+        drawSingFillCircle(inArr[i].x,inArr[i].y);
+        firstPosition.push(inArr[i]);
+        inArr.splice(i,1);
+        break;
+      }
+    }
+  }
+  /**
+   * 设置canvas的监听事件；
+   */
+  function bindEvent(){
+    canvas.addEventListener("touchstart",function(e){
+      //当开始触摸屏幕时，获取触摸点的位置，判断该点是否在某个圆圈内（利用距离和半径的差），
+      // 若在，则画该圈内的实心圆，并将该点的圆心坐标保存到轨迹数组中，便于画轨迹；
+      e.preventDefault();// 某些android 的 touchmove不宜触发 所以增加此行代码
+      var po=getPosition(e);
+      for(var i=0;i<inArr.length;i++){
+        if(Math.abs(po.x-inArr[i].x)<R&&Math.abs(po.y-inArr[i].y)<R){
+          touchFlag=true;
+          drawSingFillCircle(inArr[i].x,inArr[i].y);
+          firstPosition.push(inArr[i]);
+          inArr.splice(i,1);
+          break;
+        }
+      }
+    },false);
+    canvas.addEventListener("touchmove",function(e){
+      if(touchFlag){
+        update(getPosition(e));
+      }
+    },false);
+    canvas.addEventListener("touchend",function(e){
+      if (touchFlag) {
+        touchFlag = false;
+//              if(level+1<chooseType*chooseType){
+//                  level+=1;
+//              }
+        if(checkPathPoint(firstPosition,pathIndexArray)){
+          swal({
+            title: "",
+            text: "进入下一关!",
+            type:"success",
+            timer: 2000,
+            showConfirmButton:false
+          });
+          setTimeout(function(){
+            console.log("下一关");
+            $('#svgArea').css({'display':'block'});
+            outArr=[],inArr=[],firstPosition=[],pathIndexArray=[];//定义每个点的位置坐标；
+            ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+            if(chooseType<=6){
+              if((level+1)<=chooseType*chooseType){
+                level++;
+                pathTime++;
+                document.getElementById("start").click();
+              }else if((level+1)>chooseType*chooseType){
+                chooseType++;
+                level=4,pathTime=2;
+              }
+            }else{
+              swal({
+                title: "",
+                text: "恭喜你，已全部通关,史上最牛记忆达人！",
+                type: "success",
+                showCancelButton: false,
+                cancelButtonText:"取消",
+                cancelButtonColor:"#c5c5c5",
+                confirmButtonColor: "#00CCCC",
+                confirmButtonText: "确认",
+                closeOnConfirm: true
+              }, function(){
+                level=4;pathTime=2,chooseType=3;
+                document.getElementById("start").click();
+              });
+            }
+
+
+          },2000);
+
+        }else{
+
+          $('#svgArea').css({'display':'block'});
+          outArr=[],inArr=[],firstPosition=[],pathIndexArray=[];//定义每个点的位置坐标；
+          ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+          swal({
+            title: "",
+            text: "Game Over!\n 重新开始？",
+            type: "warning",
+            showCancelButton: false,
+            cancelButtonText:"取消",
+            cancelButtonColor:"#c5c5c5",
+            confirmButtonColor: "#00CCCC",
+            confirmButtonText: "确认",
+            closeOnConfirm: true
+          }, function(){
+            level=4;pathTime=2,chooseType=3;
+            document.getElementById("start").click();
+          });
+
+//                  swal({
+//                      title: "",
+//                      text: "Game Over!",
+//                      type:"error",
+//                      timer: 2000,
+//                      showConfirmButton:false
+//                  });
+//                  setTimeout(function(){
+//                      $('#svgArea').css({'display':'block'});
+//                      outArr=[],inArr=[],firstPosition=[],pathIndexArray=[];//定义每个点的位置坐标；
+//                      ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+//                      swal({
+//                          title: "",
+//                          text: "Game Over!\n 重新开始？",
+//                          type: "warning",
+//                          showCancelButton: true,
+//                          cancelButtonText:"取消",
+//                          cancelButtonColor:"#c5c5c5",
+//                          confirmButtonColor: "#00CCCC",
+//                          confirmButtonText: "确认",
+//                          closeOnConfirm: true
+//                      }, function(){
+//                          level=4;pathTime=2;
+//                          document.getElementById("start").click();
+//                      });
+//                  },2000);
+
+        }
+      }
+
+    },false);
+  }
+  /**
+   * 初始化函数，进入函数；
+   */
+  function init(){
+    createCircle();
+    bindEvent();
+  }
+  /**
+   ************用于游戏开始的生成需要记忆的轨迹图***************
+   */
+  /**
+   * 判断一个元素是否在一个数组中；
+   */
+  function isInArray(array,num){
+    var i;
+    for(i=0;i<array.length;i++){
+      if(num==array[i]){
+        return true;//表示在数组中，则重复；
+      }else{
+        continue;
+      }
+    }
+    if(i==array.length){
+      return false;//表示不在数组中，则不重复；
+    }
+  }
+  /**
+   * 生成随机不重复的整数，大小范围在[0,n*n-1]之间，闭区间；
+   */
+  function randomIndexArray(number,typeNum){
+    console.log(number+"/"+typeNum);
+    var number=number;//需要生成的随机数的个数；
+    var randomIndexArray=[];//存放随机数的数组；
+    var n=typeNum,maxIndex=n*n-1,minIndex=0;//因为Math.random()取不到1，所以最大上限设置为n*n;这样就可以取到(n*n-1)这个值；
+    for(var i=0;i<number;i++){
+      var randomIndex=parseInt(Math.random()*(maxIndex-minIndex+1)+minIndex);
+      var bool=isInArray(randomIndexArray,randomIndex);
+      if(bool==false){
+        randomIndexArray.push(randomIndex);
+      }else{
+        while(bool==true){
+          randomIndex=parseInt(Math.random()*(maxIndex-minIndex+1)+minIndex);
+          bool=isInArray(randomIndexArray,randomIndex);
+          if(bool==false) {
+            randomIndexArray.push(randomIndex);
+            break;
+          }else{
+            continue;
+          }
+        }
+      }
+    }
+    return randomIndexArray;
+  }
+  function getPath(){
+    createCircle();
+    var time=pathTime,totalD='';
+    var pathArray=[];//存储路径坐标的数组；
+    //随机生成下标，生成需要记住的路径；
+    pathIndexArray=randomIndexArray(level,chooseType);
+    for(var i=0;i<pathIndexArray.length;i++){
+      pathArray.push(outArr[pathIndexArray[i]]);
+    }
+    for(var j=0;j<pathArray.length;j++){
+      if(j==0){
+        drawSingFillCircle(pathArray[0].x,pathArray[0].y);//画出第一个起始点；
+        totalD+="M"+pathArray[j].x+" "+pathArray[j].y;
+      }else{
+        drawSingFillCircle(pathArray[j].x,pathArray[j].y);//画出第一个起始点；
+        totalD+=" L"+pathArray[j].x+" "+pathArray[j].y;
+      }
+    }
+    pathBox.setAttribute("d",totalD);
+    move(time,pathArray);
+  }
+  function move(time,pathArray){
+    var paths = document.querySelectorAll('path');
+    var i=0;
+    for (i; i < paths.length; i++) {
+      var path = paths[i];
+      var length = path.getTotalLength();
+      console.log("获取的长度为："+length);
+      // 清除之前的动作
+      path.style.transition = path.style.WebkitTransition =
+              'none';
+      // 设置起始点
+      path.style.strokeDasharray = length + ' ' + length;//创建虚线；
+      path.style.strokeDashoffset = length;//设置虚线环绕；
+      // 获取一个区域，获取相关的样式，让浏览器寻找一个起始点。
+      path.getBoundingClientRect();
+      // 定义动作
+      path.style.transition = path.style.WebkitTransition =
+              'stroke-dashoffset '+time+'s ease-in-out';
+      // Go!
+      path.style.strokeDashoffset = 0;
+      drawSingFillCircle(pathArray[i+1].x,pathArray[i+1].y);
+    }
+    if(i==paths.length){
+      setTimeout(function(){
+        pathBox.removeAttribute("d");
+        $('#svgArea').css({'display':'none'});
+        ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);
+        outArr=[],inArr=[],firstPosition=[];//定义每个点的位置坐标；
+        init();
+      },(time)*1000);
+    }
+  }
+  /**
+   * 游戏开始设置；
+   */
+  function checkPathPoint(firstPosition,pathIndexArray){
+    console.log("路径值："+pathIndexArray);
+    console.log(firstPosition);
+    var i=0;
+    if(firstPosition.length==pathIndexArray.length){
+      for(i;i<firstPosition.length;i++){
+        if(firstPosition[i].index!=pathIndexArray[i]){
+          return false;
+        }else{
+          continue;
+        }
+      }
+      if(i==firstPosition.length){
+        return true;
+      }
+    }else{
+      return false;
+    }
+  }
+  $("button#start").bind("click",function(){
+    getPath();
+  });
+</script>
+
+
+
+</body>
+</html>
